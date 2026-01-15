@@ -146,18 +146,18 @@ def save_results(
             {
                 "rank": i,
                 "wallet_address": w.wallet_address,
-                "score": w.score,
+                "score": round(w.score, 1),
                 "appearances": w.appearances,
-                "total_pnl": w.total_pnl,
-                "avg_pnl": w.avg_pnl,
-                "win_rate": w.win_rate,
-                "avg_position_size": w.avg_position_size,
+                "total_pnl": round(w.total_pnl) if w.total_pnl is not None else 0,
+                "avg_pnl": round(w.avg_pnl) if w.avg_pnl is not None else 0,
+                "win_rate": f"{w.win_rate*100:.1f}%" if w.win_rate is not None else "-",
+                "avg_position_size": round(w.avg_position_size) if w.avg_position_size is not None else 0,
                 "total_txn_count": w.total_txn_count,
                 # Birdeye Data
-                "win_rate_7d": w.win_rate_7d,
-                "realized_pnl": w.realized_pnl,
-                "unrealized_pnl": w.unrealized_pnl,
-                "avg_holding_time": w.avg_holding_time,
+                "win_rate_7d": f"{w.win_rate_7d*100:.1f}%" if w.win_rate_7d is not None else "-",
+                "realized_pnl": round(w.realized_pnl) if w.realized_pnl is not None else "-",
+                "unrealized_pnl": round(w.unrealized_pnl) if w.unrealized_pnl is not None else "-",
+                "avg_holding_time": w.avg_holding_time or "-",
                 "tokens_list": ",".join(w.tokens_list[:5])  # Limit for readability
             }
             for i, w in enumerate(wallets, 1)

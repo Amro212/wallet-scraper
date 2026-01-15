@@ -240,8 +240,26 @@ class DexScreenerScraper:
             logger.info(f"Navigating to {GAINERS_URL}")
             await page.goto(GAINERS_URL, wait_until="networkidle")
             
+            # Sort by Age (Newest First) - Click "Age" header twice
+            try:
+                # Wait for headers
+                await page.wait_for_selector("button.ds-table-th-button", timeout=10000)
+                
+                # Find Age header
+                age_btn = page.locator("button.ds-table-th-button", has_text="Age").first
+                if await age_btn.is_visible():
+                    logger.info("Sorting by Age: Newest First")
+                    await age_btn.click() # First click: Oldest
+                    await asyncio.sleep(1)
+                    await age_btn.click() # Second click: Newest
+                    await asyncio.sleep(2) # Wait for table update
+                else:
+                    logger.warning("Age header button not found")
+            except Exception as e:
+                logger.warning(f"Could not sort by Age: {e}")
+            
             # Wait for token rows to load
-            await asyncio.sleep(3)  # Initial wait for JS content
+            await asyncio.sleep(2)  # Initial wait for JS content
             
             if not await self._wait_for_content(page, SELECTORS["token_row"]):
                 # Save debug HTML if loading fails
