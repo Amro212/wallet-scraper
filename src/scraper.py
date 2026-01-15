@@ -5,7 +5,7 @@ Scrapes trending tokens and top traders from DEX Screener using
 Playwright with stealth measures to avoid bot detection.
 
 URL Patterns:
-    - Gainers: https://dexscreener.com/gainers/solana
+    - Gainers: https://dexscreener.com/solana/pumpswap?rankBy=trendingScoreH1&order=desc
     - Token page: https://dexscreener.com/solana/{token_address}
 
 Selectors:
@@ -36,7 +36,7 @@ from playwright.async_api import (
 )
 from playwright_stealth import stealth_async
 
-from .models import Token, Trader
+from .models import Token, Trader, SmartWallet
 from .utils import (
     extract_token_from_dexscreener_url,
     extract_wallet_from_solscan_url,
@@ -53,7 +53,7 @@ logger = setup_logging("scraper")
 
 # DEX Screener URLs
 BASE_URL = "https://dexscreener.com"
-GAINERS_URL = f"{BASE_URL}/gainers/solana"
+GAINERS_URL = f"{BASE_URL}/solana/pumpswap?rankBy=trendingScoreH1&order=desc"
 
 # Configurable selectors (for easy updates if DEX Screener changes)
 SELECTORS = {

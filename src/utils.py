@@ -12,6 +12,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import pandas as pd
 
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -93,7 +94,8 @@ def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
             "min_price_gain_pct": 500,
             "min_appearances": 2,
             "min_total_pnl": 1000,
-            "min_transactions": 3
+            "min_transactions": 3,
+            "wallet_blacklist": []
         },
         "scoring": {
             "consistency_weight": 0.40,
@@ -260,6 +262,33 @@ def save_to_csv(
     except (IOError, OSError) as e:
         logger = logging.getLogger("wallet_tracker")
         logger.error(f"Failed to save CSV to {filepath}: {e}")
+        return False
+
+
+def save_to_xlsx(
+    data: List[Dict[str, Any]],
+    filepath: Union[str, Path]
+) -> bool:
+    """
+    Save list of dictionaries to XLSX file using pandas.
+    """
+    if not data:
+        logger = logging.getLogger("wallet_tracker")
+        logger.warning(f"No data to save to {filepath}")
+        return False
+        
+    filepath = Path(filepath)
+    # Ensure directory exists
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Check if openpyxl is installed (implied by pandas usage but good to know)
+        df = pd.DataFrame(data)
+        df.to_excel(filepath, index=False)
+        return True
+    except Exception as e:
+        logger = logging.getLogger("wallet_tracker")
+        logger.error(f"Failed to save XLSX to {filepath}: {e}")
         return False
 
 

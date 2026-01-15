@@ -111,6 +111,12 @@ class SmartWallet:
     score: float = 0.0
     tokens_list: List[str] = field(default_factory=list)
     
+    # New fields from Birdeye
+    avg_holding_time: Optional[str] = None
+    realized_pnl: Optional[float] = None
+    unrealized_pnl: Optional[float] = None
+    win_rate_7d: Optional[float] = None
+    
     def is_valid(self) -> bool:
         """Check if smart wallet has valid data."""
         return bool(

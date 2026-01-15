@@ -28,14 +28,16 @@ from tqdm import tqdm
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.analyzer import analyze_traders
+from src.analyzer import analyze_traders, rescore_wallets
 from src.models import SmartWallet, Token, Trader
 from src.scraper import DexScreenerScraper
+from src.birdeye import BirdeyeScraper
 from src.utils import (
     format_currency,
     format_percentage,
     load_config,
     save_to_csv,
+    save_to_xlsx,
     setup_logging
 )
 
@@ -151,12 +153,19 @@ def save_results(
                 "win_rate": w.win_rate,
                 "avg_position_size": w.avg_position_size,
                 "total_txn_count": w.total_txn_count,
+                # Birdeye Data
+                "win_rate_7d": w.win_rate_7d,
+                "realized_pnl": w.realized_pnl,
+                "unrealized_pnl": w.unrealized_pnl,
+                "avg_holding_time": w.avg_holding_time,
                 "tokens_list": ",".join(w.tokens_list[:5])  # Limit for readability
             }
             for i, w in enumerate(wallets, 1)
         ]
-        save_to_csv(wallet_dicts, output["smart_wallets_file"])
-        logger.info(f"Saved {len(wallets)} smart wallets to {output['smart_wallets_file']}")
+        # Save as XLSX
+        xlsx_file = output["smart_wallets_file"].replace(".csv", ".xlsx")
+        save_to_xlsx(wallet_dicts, xlsx_file)
+        logger.info(f"Saved {len(wallets)} smart wallets to {xlsx_file}")
 
 
 async def main() -> None:
@@ -228,7 +237,23 @@ async def main() -> None:
     smart_wallets = analyze_traders(all_traders, config)
     print(f"✅ Identified {len(smart_wallets)} smart wallets\n")
     
-    # Step 4: Output results
+    # Step 4: Enrich wallets with Birdeye data
+    if smart_wallets:
+        print("🦅 Enriching top wallets with Birdeye data...")
+        # Enrich top 20 wallets to balance speed/depth
+        limit = min(len(smart_wallets), 20)
+        to_enrich = smart_wallets[:limit]
+        
+        async with BirdeyeScraper(config) as birdeye:
+            pbar = tqdm(to_enrich, desc="Enriching", unit="wallet")
+            for wallet in pbar:
+                await birdeye.enrich_wallet(wallet)
+        print(f"✅ Enriched {len(to_enrich)} wallets\n")
+        
+        # Rescore and re-rank with Degen Score
+        smart_wallets = rescore_wallets(smart_wallets)
+    
+    # Step 5: Output results
     top_n = config["output"]["top_wallets_to_display"]
     print_results(smart_wallets, top_n)
     

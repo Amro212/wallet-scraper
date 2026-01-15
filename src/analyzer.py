@@ -12,6 +12,7 @@ Scoring Algorithm:
 """
 
 from collections import defaultdict
+import re
 from typing import Dict, List, Optional
 
 from .models import SmartWallet, Trader, WalletStats
@@ -195,13 +196,21 @@ def apply_filters(
     min_appearances = filters["min_appearances"]
     min_pnl = filters["min_total_pnl"]
     min_txns = filters["min_transactions"]
+    blacklist = set(filters.get("wallet_blacklist", []))
     
     logger.info(f"Applying filters (min_appearances={min_appearances}, "
                 f"min_pnl=${min_pnl}, min_txns={min_txns})")
+    if blacklist:
+        logger.info(f"Blacklist active: favoring exclusion of {len(blacklist)} wallets")
     
     filtered = []
     
     for wallet in wallets:
+        # Check blacklist
+        if wallet.wallet_address in blacklist:
+            logger.debug(f"Filtered {wallet.get_short_address()}: Blacklisted")
+            continue
+
         # Check minimum appearances
         if wallet.appearances < min_appearances:
             logger.debug(f"Filtered {wallet.get_short_address()}: "
@@ -302,3 +311,96 @@ def analyze_traders(
     
     logger.info(f"Analysis complete: {len(ranked)} smart wallets identified")
     return ranked
+
+
+def _parse_hold_time(hold_time_str: Optional[str]) -> Optional[float]:
+    """Parse hold time string to minutes (e.g. 18D, 4h, 30m)."""
+    if not hold_time_str:
+        return None
+    
+    text = hold_time_str.upper().strip()
+    match = re.match(r"([\d\.]+)([A-Z]+)", text)
+    if not match:
+        return None
+        
+    val = float(match.group(1))
+    unit = match.group(2)
+    
+    if 'D' in unit:
+        return val * 24 * 60
+    elif 'H' in unit:
+        return val * 60
+    elif 'M' in unit:
+        return val
+    elif 'S' in unit:
+        return val / 60
+    return None
+
+
+def calculate_degen_score(wallet: SmartWallet) -> float:
+    """
+    Calculate 'Degen Score' based on Birdeye metrics.
+    Focuses on 7D Win Rate, Realized PnL, and Conviction.
+    """
+    # 1. Base Score: Win Rate (prefer 7D)
+    win_rate = wallet.win_rate_7d if wallet.win_rate_7d is not None else wallet.win_rate
+    
+    # Filter: If 7D win rate is known and < 30%, kill score (unless very profitable realized)
+    if wallet.win_rate_7d is not None and wallet.win_rate_7d < 0.30:
+        # Check if they made huge realized profit despite low win rate (sniper luck)
+        if not (wallet.realized_pnl and wallet.realized_pnl > 5000):
+            return 0.0
+        
+    score = win_rate * 100.0
+    
+    # 2. Appearance Bonus (Compound)
+    # appearances=2 -> 1.1x, 3->1.21x... cap it?
+    # Simple multiplier: 1.1 for each extra appearance
+    if wallet.appearances > 1:
+        score *= (1.1 ** (wallet.appearances - 1))
+    
+    # 3. Realized PnL Multiplier
+    if wallet.realized_pnl is not None:
+        if wallet.realized_pnl > 0:
+            score *= 1.2
+        elif wallet.realized_pnl < 0:
+            score *= 0.5
+            
+    # 4. Bagholder Penalty
+    if wallet.unrealized_pnl is not None and wallet.total_pnl > 0:
+        # If unrealized loss is significant compared to total profits reported by DEX screener
+        if wallet.unrealized_pnl < -(wallet.total_pnl * 0.5):
+            score *= 0.7
+            
+    # 5. Holding Time Multiplier
+    hold_mins = _parse_hold_time(wallet.avg_holding_time)
+    if hold_mins is not None:
+        if hold_mins < 10: # < 10 mins (Paper hands)
+            score *= 0.8
+        elif 60 <= hold_mins <= 2880: # 1h - 48h (Conviction)
+            score *= 1.1
+            
+    return round(min(score, 100.0), 2)
+
+
+def rescore_wallets(wallets: List[SmartWallet]) -> List[SmartWallet]:
+    """
+    Re-score and specific re-rank wallets after Birdeye enrichment.
+    """
+    logger.info("Rescoring wallets with Degen Score logic...")
+    processed = []
+    
+    for w in wallets:
+        # Only rescore if we have enriched data or want to enforce new logic
+        # We replace the old score
+        new_score = calculate_degen_score(w)
+        w.score = new_score
+        
+        # Determine strict filter (e.g. score must be > 0)
+        if new_score > 0:
+            processed.append(w)
+        else:
+             logger.debug(f"Filtered {w.get_short_address()} after rescore (Score=0)")
+             
+    # Sort by new score
+    return sorted(processed, key=lambda w: w.score, reverse=True)
