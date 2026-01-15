@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Project Data and Artifacts
+data/
+debug_html/
+*.log
+wallet_tracker.log
+
+# OS Files
+.DS_Store
+Thumbs.db
