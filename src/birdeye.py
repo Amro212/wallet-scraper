@@ -48,8 +48,7 @@ class BirdeyeScraper:
             
     async def enrich_wallet(self, wallet: SmartWallet) -> SmartWallet:
         """
-        Enrich a SmartWallet with data from Birdeye.
-        updates the wallet object in-place and returns it.
+        Enrich a SmartWallet with data from Birdeye (all 7D and 30D metrics).
         """
         url = f"https://birdeye.so/solana/wallet-analyzer/{wallet.wallet_address}"
         logger.info(f"Analyzing wallet on Birdeye: {wallet.get_short_address()}")
@@ -61,84 +60,72 @@ class BirdeyeScraper:
         page = await context.new_page()
         await stealth_async(page)
         
+        # Verified JS extraction using global text regex (tested on BWp5WNeY54...)
+        EXTRACT_JS = """() => {
+            const allText = document.body.textContent.replace(/\\s+/g, ' ');
+            
+            const extract = (label, regexPattern) => {
+                const r = new RegExp(label + '\\\\s*' + regexPattern, 'i');
+                const match = allText.match(r);
+                return match ? match[1].replace(/\\s/g, '') : null;
+            };
+
+            return {
+                winRate: extract('Win Rate', '(\\\\d+(\\\\.\\\\d+)?%)'),
+                realized: extract('Realized', '([+-]?\\\\$\\\\d+(\\\\.\\\\d+)?[KMB]?)'),
+                unrealized: extract('Unrealized', '([+-]?\\\\$\\\\d+(\\\\.\\\\d+)?[KMB]?)'),
+                avgHold: extract('Avg Holding Duration', '(\\\\d+[smhd])')
+            };
+        }"""
+        
         try:
-            # Navigate with a generous timeout
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            # Navigate and wait for page load
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_selector("text=Win Rate", timeout=20000)
+            await asyncio.sleep(2)  # Extra wait for dynamic content
             
-            # Wait for key elements to appear (Birdeye is slow/dynamic)
-            # Wait for key elements to appear (Birdeye is slow/dynamic)
+            # --- Extract 7D Metrics ---
             try:
-                # Wait for "Win Rate" text to appear
-                await page.wait_for_selector("text=Win Rate", timeout=15000)
+                logger.debug("Clicking 7D button...")
+                await page.click("button:has-text('7D')", timeout=5000)
+                await asyncio.sleep(3)
                 
-                # Switch to 7D view
-                try:
-                    logger.debug("Switching to 7D view...")
-                    # Try specific time filter button
-                    await page.click("button:has-text('7D'), div[role='button']:has-text('7D')", timeout=5000)
-                    await asyncio.sleep(2) # Wait for data to update
-                except Exception as e:
-                    logger.warning(f"Could not set 7D filter for {wallet.get_short_address()}: {e}")
-
-            except PlaywrightTimeout:
-                logger.warning(f"Birdeye timeout for {wallet.get_short_address()}")
-                return wallet
-
-            # Extract data using robust JS evaluation
-            data = await page.evaluate("""() => {
-                const getTextAfterLabel = (label) => {
-                    // Find all elements containing the label
-                    const candidates = Array.from(document.querySelectorAll('*'))
-                        .filter(el => el.textContent.trim() === label);
+                d7 = await page.evaluate(EXTRACT_JS)
+                logger.debug(f"7D raw data: {d7}")
+                
+                if d7.get('winRate'):
+                    wallet.win_rate_7d = self._parse_percentage(d7['winRate'])
+                if d7.get('realized'):
+                    wallet.realized_pnl_7d = self._parse_birdeye_currency(d7['realized'])
+                if d7.get('unrealized'):
+                    wallet.unrealized_pnl_7d = self._parse_birdeye_currency(d7['unrealized'])
+                if d7.get('avgHold'):
+                    wallet.avg_holding_time_7d = d7['avgHold']
                     
-                    if (!candidates.length) return null;
-                    
-                    const el = candidates[0];
-                    
-                    // Birdeye structure: usually Label is in a <p> or <div>, Value is next sibling or child of parent's next sibling
-                    // Check next sibling
-                    if (el.nextElementSibling && el.nextElementSibling.textContent.trim()) {
-                        return el.nextElementSibling.textContent.trim();
-                    }
-                    
-                    // Check parent's next sibling (common in grid layouts)
-                    if (el.parentElement && el.parentElement.nextElementSibling) {
-                        return el.parentElement.nextElementSibling.textContent.trim();
-                    }
-                    
-                    return null;
-                };
-
-                return {
-                    winRate: getTextAfterLabel('Win Rate'),
-                    realized: getTextAfterLabel('Realized'),
-                    unrealized: getTextAfterLabel('Unrealized'),
-                    avgHold: getTextAfterLabel('Avg Holding Duration')
-                };
-            }""")
+            except Exception as e:
+                logger.warning(f"7D extraction failed for {wallet.get_short_address()}: {e}")
             
-            logger.debug(f"Birdeye data for {wallet.get_short_address()}: {data}")
-            
-            # Parse and assign values
-            if data['winRate']:
-                # Format: "10.77%" -> 0.1077 or just keep as float 10.77
-                # Our models use float, assuming 0.0-1.0 or 0-100. Let's use 0-1
-                wr_str = data['winRate'].replace('%', '').strip()
-                try:
-                    wallet.win_rate_7d = float(wr_str) / 100.0
-                except:
-                    pass
+            # --- Extract 30D Metrics ---
+            try:
+                logger.debug("Clicking 30D button...")
+                await page.click("button:has-text('30D')", timeout=5000)
+                await asyncio.sleep(3)
+                
+                d30 = await page.evaluate(EXTRACT_JS)
+                logger.debug(f"30D raw data: {d30}")
+                
+                if d30.get('winRate'):
+                    wallet.win_rate_30d = self._parse_percentage(d30['winRate'])
+                if d30.get('realized'):
+                    wallet.realized_pnl_30d = self._parse_birdeye_currency(d30['realized'])
+                if d30.get('unrealized'):
+                    wallet.unrealized_pnl_30d = self._parse_birdeye_currency(d30['unrealized'])
+                if d30.get('avgHold'):
+                    wallet.avg_holding_time_30d = d30['avgHold']
                     
-            if data['avgHold']:
-                wallet.avg_holding_time = data['avgHold']
-                
-            if data['realized']:
-                val_str = data['realized'].split('(')[0].strip()
-                wallet.realized_pnl = self._parse_birdeye_currency(val_str)
-                
-            if data['unrealized']:
-                wallet.unrealized_pnl = self._parse_birdeye_currency(data['unrealized'])
-                
+            except Exception as e:
+                logger.warning(f"30D extraction failed for {wallet.get_short_address()}: {e}")
+
             return wallet
             
         except Exception as e:
@@ -146,6 +133,14 @@ class BirdeyeScraper:
             return wallet
         finally:
             await context.close()
+            
+    def _parse_percentage(self, text: str) -> Optional[float]:
+        try:
+            if not text: return None
+            val = float(text.replace('%', '').strip())
+            return val / 100.0
+        except:
+            return None
             
     def _parse_birdeye_currency(self, text: str) -> Optional[float]:
         """Parse Birdeye currency format (e.g. -$36.18K, +$99.13K)."""

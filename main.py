@@ -150,22 +150,33 @@ def save_results(
                 "appearances": w.appearances,
                 "total_pnl": round(w.total_pnl) if w.total_pnl is not None else 0,
                 "avg_pnl": round(w.avg_pnl) if w.avg_pnl is not None else 0,
-                "win_rate": f"{w.win_rate*100:.1f}%" if w.win_rate is not None else "-",
                 "avg_position_size": round(w.avg_position_size) if w.avg_position_size is not None else 0,
                 "total_txn_count": w.total_txn_count,
-                # Birdeye Data
+                # Birdeye 7D Data
                 "win_rate_7d": f"{w.win_rate_7d*100:.1f}%" if w.win_rate_7d is not None else "-",
-                "realized_pnl": round(w.realized_pnl) if w.realized_pnl is not None else "-",
-                "unrealized_pnl": round(w.unrealized_pnl) if w.unrealized_pnl is not None else "-",
-                "avg_holding_time": w.avg_holding_time or "-",
-                "tokens_list": ",".join(w.tokens_list[:5])  # Limit for readability
+                "realized_pnl_7d": round(w.realized_pnl_7d) if w.realized_pnl_7d is not None else "-",
+                "unrealized_pnl_7d": round(w.unrealized_pnl_7d) if w.unrealized_pnl_7d is not None else "-",
+                "avg_holding_time_7d": w.avg_holding_time_7d or "-",
+                # Birdeye 30D Data
+                "win_rate_30d": f"{w.win_rate_30d*100:.1f}%" if w.win_rate_30d is not None else "-",
+                "realized_pnl_30d": round(w.realized_pnl_30d) if w.realized_pnl_30d is not None else "-",
+                "unrealized_pnl_30d": round(w.unrealized_pnl_30d) if w.unrealized_pnl_30d is not None else "-",
+                "avg_holding_time_30d": w.avg_holding_time_30d or "-",
+                # Token list
+                "tokens_list": ",".join(w.tokens_list[:5])
             }
             for i, w in enumerate(wallets, 1)
         ]
+        # Save as CSV
+        save_to_csv(wallet_dicts, output["smart_wallets_file"])
+
         # Save as XLSX
         xlsx_file = output["smart_wallets_file"].replace(".csv", ".xlsx")
         save_to_xlsx(wallet_dicts, xlsx_file)
-        logger.info(f"Saved {len(wallets)} smart wallets to {xlsx_file}")
+        
+        logger.info(f"Saved {len(wallets)} smart wallets to:")
+        logger.info(f"  - CSV: {output['smart_wallets_file']}")
+        logger.info(f"  - XLSX: {xlsx_file}")
 
 
 async def main() -> None:

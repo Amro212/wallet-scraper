@@ -270,7 +270,7 @@ def save_to_xlsx(
     filepath: Union[str, Path]
 ) -> bool:
     """
-    Save list of dictionaries to XLSX file using pandas.
+    Save list of dictionaries to XLSX file using pandas with formatting.
     """
     if not data:
         logger = logging.getLogger("wallet_tracker")
@@ -282,9 +282,33 @@ def save_to_xlsx(
     filepath.parent.mkdir(parents=True, exist_ok=True)
     
     try:
-        # Check if openpyxl is installed (implied by pandas usage but good to know)
         df = pd.DataFrame(data)
-        df.to_excel(filepath, index=False)
+        
+        # Use ExcelWriter with openpyxl engine for styling
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Smart Wallets')
+            
+            # Access the worksheet to apply styles
+            worksheet = writer.sheets['Smart Wallets']
+            
+            # Auto-filter
+            worksheet.auto_filter.ref = worksheet.dimensions
+            
+            # Adjust column widths
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                
+                # Set width (with padding, cap at 60)
+                adjusted_width = min(max_length + 2, 60)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+                
         return True
     except Exception as e:
         logger = logging.getLogger("wallet_tracker")
