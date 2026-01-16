@@ -143,7 +143,8 @@ def save_results(
     
     # Save smart wallets
     if wallets:
-        wallet_dicts = [
+        # Prepare rich data for JSON (web app)
+        json_data = [
             {
                 "rank": i,
                 "wallet_address": w.wallet_address,
@@ -163,21 +164,38 @@ def save_results(
                 "realized_pnl_30d": round(w.realized_pnl_30d) if w.realized_pnl_30d is not None else "-",
                 "unrealized_pnl_30d": round(w.unrealized_pnl_30d) if w.unrealized_pnl_30d is not None else "-",
                 "avg_holding_time_30d": w.avg_holding_time_30d or "-",
-                # Token list
-                "tokens_list": ",".join(w.tokens_list[:5])
+                # Token list (Full objects)
+                "tokens_list": w.tokens_list
             }
             for i, w in enumerate(wallets, 1)
         ]
+
+        # Prepare flat data for CSV/XLSX
+        csv_data = []
+        for item in json_data:
+            flat_item = item.copy()
+            # Flatten tokens list to string: "SYMBOL ($ADDR...)"
+            tokens = []
+            for t in item['tokens_list']:
+                # Handle both dict and potentially string if something failed
+                if isinstance(t, dict):
+                    addr_short = t['address'][:4] + '...'
+                    tokens.append(f"{t['symbol']} ({addr_short})")
+                else:
+                    tokens.append(str(t))
+            flat_item['tokens_list'] = ", ".join(tokens)
+            csv_data.append(flat_item)
+
         # Save as CSV
-        save_to_csv(wallet_dicts, output["smart_wallets_file"])
+        save_to_csv(csv_data, output["smart_wallets_file"])
 
         # Save as XLSX
         xlsx_file = output["smart_wallets_file"].replace(".csv", ".xlsx")
-        save_to_xlsx(wallet_dicts, xlsx_file)
+        save_to_xlsx(csv_data, xlsx_file)
         
         # Save as JSON for web dashboard
         json_file = output["smart_wallets_file"].replace(".csv", ".json")
-        save_to_json(wallet_dicts, json_file)
+        save_to_json(json_data, json_file)
         
         logger.info(f"Saved {len(wallets)} smart wallets to:")
         logger.info(f"  - CSV: {output['smart_wallets_file']}")
@@ -236,7 +254,7 @@ async def main() -> None:
             for token in pbar:
                 pbar.set_postfix_str(f"{token.symbol[:10]}")
                 
-                traders = await scraper.get_top_traders(token.address)
+                traders = await scraper.get_top_traders(token.address, token.symbol)
                 all_traders.extend(traders)
                 
             print(f"✅ Scraped {len(all_traders)} trader records\n")

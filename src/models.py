@@ -7,7 +7,7 @@ and validation methods.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 @dataclass
@@ -67,6 +67,7 @@ class Trader:
     """
     wallet_address: str
     token_address: str
+    token_symbol: str
     bought_usd: float
     sold_usd: float
     pnl_usd: float
@@ -78,7 +79,9 @@ class Trader:
         return bool(
             self.wallet_address and 
             len(self.wallet_address) >= 32 and
-            self.token_address
+            len(self.wallet_address) >= 32 and
+            self.token_address and
+            self.token_symbol
         )
     
     def is_profitable(self) -> bool:
@@ -113,7 +116,7 @@ class SmartWallet:
     avg_position_size: float
     total_txn_count: int = 0
     score: float = 0.0
-    tokens_list: List[str] = field(default_factory=list)
+    tokens_list: List[Dict[str, str]] = field(default_factory=list)
     
     # Birdeye 7D metrics
     win_rate_7d: Optional[float] = None
@@ -190,6 +193,7 @@ class WalletStats:
         return sum(t.txn_count for t in self.trades)
     
     @property
-    def tokens_list(self) -> List[str]:
-        """List of unique token addresses traded."""
-        return list(set(t.token_address for t in self.trades))
+    def tokens_list(self) -> List[Dict[str, str]]:
+        """List of unique tokens traded (symbol + address)."""
+        unique = set((t.token_symbol, t.token_address) for t in self.trades)
+        return [{"symbol": s, "address": a} for s, a in unique]

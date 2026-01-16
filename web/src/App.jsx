@@ -25,18 +25,23 @@ function ScoreBadge({ score }) {
 }
 
 // Token badge with DexScreener link
-function TokenBadge({ address }) {
-  const shortAddr = address.slice(0, 6) + '...'
+function TokenBadge({ token }) {
+  // Handle both string (legacy) and object formats
+  const isObject = typeof token === 'object' && token !== null
+  const address = isObject ? token.address : token
+  const label = isObject ? token.symbol : (address.slice(0, 4) + '...')
+
   const url = `https://dexscreener.com/solana/${address}`
+
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="token-badge inline-block px-2 py-1 bg-blue-900/50 text-blue-400 rounded text-xs font-mono hover:bg-blue-800/60"
+      className="token-badge inline-block px-2 py-1 bg-blue-900/50 text-blue-400 rounded text-xs font-mono hover:bg-blue-800/60 transition-colors"
       title={address}
     >
-      {shortAddr}
+      {label}
     </a>
   )
 }
@@ -58,7 +63,14 @@ function Metric({ label, value, highlight }) {
 function WalletCard({ wallet }) {
   const shortAddress = wallet.wallet_address.slice(0, 8) + '...' + wallet.wallet_address.slice(-6)
   const birdeyeUrl = `https://birdeye.so/solana/wallet-analyzer/${wallet.wallet_address}`
-  const tokens = wallet.tokens_list ? wallet.tokens_list.split(',') : []
+
+  // Parse tokens list if it's a string (legacy/csv compat) or use as is
+  let tokens = []
+  if (Array.isArray(wallet.tokens_list)) {
+    tokens = wallet.tokens_list
+  } else if (typeof wallet.tokens_list === 'string') {
+    tokens = wallet.tokens_list.split(',').map(t => t.trim())
+  }
 
   // Determine PnL highlight
   const pnlNum = parseInt(wallet.realized_pnl_7d) || 0
@@ -102,10 +114,10 @@ function WalletCard({ wallet }) {
 
       {/* Token Appearances */}
       <div className="mb-4">
-        <span className="text-xs text-gray-500 block mb-2">Token Appearances:</span>
-        <div className="flex flex-wrap gap-1">
+        <span className="text-xs text-gray-500 block mb-2">Token Appearances ({tokens.length}):</span>
+        <div className="flex flex-wrap gap-2">
           {tokens.map((token, i) => (
-            <TokenBadge key={i} address={token.trim()} />
+            <TokenBadge key={i} token={token} />
           ))}
         </div>
       </div>

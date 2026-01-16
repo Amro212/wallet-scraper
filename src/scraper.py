@@ -424,6 +424,7 @@ class DexScreenerScraper:
     async def get_top_traders(
         self,
         token_address: str,
+        token_symbol: str = "?",
         limit: Optional[int] = None
     ) -> List[Trader]:
         """
@@ -446,7 +447,7 @@ class DexScreenerScraper:
         limit = limit or self.config["scraping"]["top_traders_limit"]
         token_url = f"{BASE_URL}/solana/{token_address}"
         
-        logger.info(f"Scraping top traders for {token_address[:16]}...")
+        logger.info(f"Scraping top traders for {token_symbol} ({token_address[:10]}...)...")
         
         page = await self._new_stealth_page()
         traders: List[Trader] = []
@@ -496,7 +497,7 @@ class DexScreenerScraper:
             processed_wallets = set()
             for element in wallet_elements:
                 trader = await self._parse_trader_element(
-                    page, element, token_address
+                    page, element, token_address, token_symbol
                 )
                 if trader and trader.wallet_address not in processed_wallets:
                     traders.append(trader)
@@ -575,7 +576,8 @@ class DexScreenerScraper:
         self,
         page: Page,
         wallet_element,
-        token_address: str
+        token_address: str,
+        token_symbol: str
     ) -> Optional[Trader]:
         """
         Parse trader data from wallet link element and surrounding context.
@@ -696,6 +698,7 @@ class DexScreenerScraper:
             return Trader(
                 wallet_address=wallet_address,
                 token_address=token_address,
+                token_symbol=token_symbol,
                 bought_usd=bought,
                 sold_usd=sold,
                 pnl_usd=pnl,
