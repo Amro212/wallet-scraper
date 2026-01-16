@@ -193,8 +193,8 @@ def parse_percentage(text: str) -> Optional[float]:
     
     text = text.strip()
     
-    # Remove percentage sign and handle special chars
-    cleaned = re.sub(r"[%+]", "", text)
+    # Remove percentage sign, commas, and handle special chars
+    cleaned = re.sub(r"[%+,]", "", text)
     cleaned = cleaned.replace("−", "-")  # Unicode minus
     
     try:

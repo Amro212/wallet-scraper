@@ -57,7 +57,7 @@ GAINERS_URL = f"{BASE_URL}/solana/pumpswap?rankBy=trendingScoreH1&order=desc"
 
 # Configurable selectors (for easy updates if DEX Screener changes)
 SELECTORS = {
-    "token_row": "a.ds-dex-table-row, a[href^='/solana/']",
+    "token_row": "a.ds-dex-table-row",
     "top_traders_tab": "button:has-text('Top Traders')",
     "trader_row": "div[class*='custom-'] > div",  # Dynamic classes
     "solscan_link": "a[href*='solscan.io/account/']",
@@ -344,8 +344,8 @@ class DexScreenerScraper:
                 if parsed_volume is not None:
                     volume = parsed_volume
             
-            # Get 24h price change from the specific column
-            price_cell = await row.query_selector(".ds-dex-table-row-col-price-change-h24")
+            # Get 6H price change from the specific column (user wants 6H, not 24H)
+            price_cell = await row.query_selector(".ds-dex-table-row-col-price-change-h6")
             if price_cell:
                 price_text = await price_cell.inner_text()
                 parsed_price = parse_percentage(price_text)

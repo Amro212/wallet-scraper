@@ -348,7 +348,7 @@ def calculate_degen_score(wallet: SmartWallet) -> float:
     # Filter: If 7D win rate is known and < 30%, kill score (unless very profitable realized)
     if wallet.win_rate_7d is not None and wallet.win_rate_7d < 0.30:
         # Check if they made huge realized profit despite low win rate (sniper luck)
-        if not (wallet.realized_pnl and wallet.realized_pnl > 5000):
+        if not (wallet.realized_pnl_7d and wallet.realized_pnl_7d > 5000):
             return 0.0
         
     score = win_rate * 100.0
@@ -360,20 +360,20 @@ def calculate_degen_score(wallet: SmartWallet) -> float:
         score *= (1.1 ** (wallet.appearances - 1))
     
     # 3. Realized PnL Multiplier
-    if wallet.realized_pnl is not None:
-        if wallet.realized_pnl > 0:
+    if wallet.realized_pnl_7d is not None:
+        if wallet.realized_pnl_7d > 0:
             score *= 1.2
-        elif wallet.realized_pnl < 0:
+        elif wallet.realized_pnl_7d < 0:
             score *= 0.5
             
     # 4. Bagholder Penalty
-    if wallet.unrealized_pnl is not None and wallet.total_pnl > 0:
+    if wallet.unrealized_pnl_7d is not None and wallet.total_pnl > 0:
         # If unrealized loss is significant compared to total profits reported by DEX screener
-        if wallet.unrealized_pnl < -(wallet.total_pnl * 0.5):
+        if wallet.unrealized_pnl_7d < -(wallet.total_pnl * 0.5):
             score *= 0.7
             
     # 5. Holding Time Multiplier
-    hold_mins = _parse_hold_time(wallet.avg_holding_time)
+    hold_mins = _parse_hold_time(wallet.avg_holding_time_7d)
     if hold_mins is not None:
         if hold_mins < 10: # < 10 mins (Paper hands)
             score *= 0.8
