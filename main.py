@@ -37,6 +37,7 @@ from src.utils import (
     format_percentage,
     load_config,
     save_to_csv,
+    save_to_json,
     save_to_xlsx,
     setup_logging
 )
@@ -174,9 +175,14 @@ def save_results(
         xlsx_file = output["smart_wallets_file"].replace(".csv", ".xlsx")
         save_to_xlsx(wallet_dicts, xlsx_file)
         
+        # Save as JSON for web dashboard
+        json_file = output["smart_wallets_file"].replace(".csv", ".json")
+        save_to_json(wallet_dicts, json_file)
+        
         logger.info(f"Saved {len(wallets)} smart wallets to:")
         logger.info(f"  - CSV: {output['smart_wallets_file']}")
         logger.info(f"  - XLSX: {xlsx_file}")
+        logger.info(f"  - JSON: {json_file}")
 
 
 async def main() -> None:

@@ -316,6 +316,33 @@ def save_to_xlsx(
         return False
 
 
+def save_to_json(
+    data: List[Dict[str, Any]],
+    filepath: Union[str, Path]
+) -> bool:
+    """
+    Save list of dictionaries to JSON file for web app consumption.
+    """
+    import json
+    
+    if not data:
+        logger = logging.getLogger("wallet_tracker")
+        logger.warning(f"No data to save to {filepath}")
+        return False
+        
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, default=str)
+        return True
+    except Exception as e:
+        logger = logging.getLogger("wallet_tracker")
+        logger.error(f"Failed to save JSON to {filepath}: {e}")
+        return False
+
+
 def load_from_csv(filepath: Union[str, Path]) -> List[Dict[str, Any]]:
     """
     Load data from CSV file.

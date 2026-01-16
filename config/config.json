@@ -12,6 +12,7 @@
     "filters": {
         "min_token_volume": 100000,
         "min_price_gain_pct": 30,
+        "min_market_cap": 50000,
         "min_appearances": 2,
         "min_total_pnl": 650,
         "min_transactions": 3,

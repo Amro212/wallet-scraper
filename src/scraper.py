@@ -228,6 +228,7 @@ class DexScreenerScraper:
         """
         min_volume = min_volume or self.config["filters"]["min_token_volume"]
         min_gain = min_gain or self.config["filters"]["min_price_gain_pct"]
+        min_mcap = self.config["filters"].get("min_market_cap", 0)
         max_tokens = max_tokens or self.config["scraping"]["max_tokens_per_run"]
         
         logger.info(f"Scraping gainers (min_volume=${min_volume:,}, min_gain={min_gain}%)")
@@ -277,7 +278,7 @@ class DexScreenerScraper:
             
             for row in rows[:max_tokens * 2]:  # Get extra to filter
                 token = await self._parse_token_row(row)
-                if token and token.meets_criteria(min_volume, min_gain):
+                if token and token.meets_criteria(min_volume, min_gain, min_mcap):
                     tokens.append(token)
                     if len(tokens) >= max_tokens:
                         break
@@ -352,6 +353,15 @@ class DexScreenerScraper:
                 if parsed_price is not None:
                     price_change = parsed_price
             
+            # Get market cap from the specific column
+            market_cap = 0.0
+            mcap_cell = await row.query_selector(".ds-dex-table-row-col-market-cap")
+            if mcap_cell:
+                mcap_text = await mcap_cell.inner_text()
+                parsed_mcap = parse_currency(mcap_text)
+                if parsed_mcap is not None:
+                    market_cap = parsed_mcap
+            
             # Get token name/symbol from first cells
             text_content = await row.inner_text()
             lines = [line.strip() for line in text_content.split("\n") if line.strip()]
@@ -383,7 +393,7 @@ class DexScreenerScraper:
                 if percentages:
                     price_change = max(percentages)
             
-            logger.debug(f"Parsed token: {symbol} vol=${volume:,.0f} change={price_change:.1f}%")
+            logger.debug(f"Parsed token: {symbol} vol=${volume:,.0f} change={price_change:.1f}% mcap=${market_cap:,.0f}")
             
             return Token(
                 address=address,
@@ -391,6 +401,7 @@ class DexScreenerScraper:
                 symbol=symbol,
                 volume_24h=volume,
                 price_change_24h=price_change,
+                market_cap=market_cap,
                 timestamp=datetime.now()
             )
             

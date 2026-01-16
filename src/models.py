@@ -40,9 +40,13 @@ class Token:
             self.volume_24h > 0
         )
     
-    def meets_criteria(self, min_volume: float, min_gain: float) -> bool:
+    def meets_criteria(self, min_volume: float, min_gain: float, min_mcap: float = 0) -> bool:
         """Check if token meets filtering criteria."""
-        return self.volume_24h >= min_volume and self.price_change_24h >= min_gain
+        return (
+            self.volume_24h >= min_volume and 
+            self.price_change_24h >= min_gain and
+            self.market_cap >= min_mcap
+        )
 
 
 @dataclass

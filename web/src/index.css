@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-card: #1c2128;
+  --text-primary: #f0f6fc;
+  --text-secondary: #8b949e;
+  --accent-green: #3fb950;
+  --accent-yellow: #d29922;
+  --accent-red: #f85149;
+  --accent-blue: #58a6ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-secondary);
+  border-radius: 4px;
+}
+
+/* Score badge colors */
+.score-high { background: linear-gradient(135deg, #3fb950, #238636); }
+.score-medium { background: linear-gradient(135deg, #d29922, #9e6a03); }
+.score-low { background: linear-gradient(135deg, #f85149, #da3633); }
+
+/* Card hover effect */
+.wallet-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wallet-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Token badge */
+.token-badge {
+  transition: all 0.15s ease;
+}
+
+.token-badge:hover {
+  transform: scale(1.05);
+  filter: brightness(1.2);
+}
