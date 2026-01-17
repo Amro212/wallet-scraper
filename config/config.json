@@ -26,13 +26,16 @@
         ]
     },
     "scoring": {
-        "consistency_weight": 0.40,
-        "profitability_weight": 0.25,
-        "win_rate_weight": 0.20,
-        "position_size_weight": 0.15,
+        "consistency_weight": 0.20,
+        "profitability_weight": 0.10,
+        "win_rate_weight": 0.30,
+        "hold_time_weight": 0.30,
+        "position_size_weight": 0.10,
         "max_appearances_for_perfect_score": 10,
         "max_pnl_for_perfect_score": 50000,
-        "max_position_for_perfect_score": 5000
+        "max_position_for_perfect_score": 5000,
+        "min_hold_time_minutes": 60,
+        "max_hold_time_minutes": 2880
     },
     "output": {
         "top_wallets_to_display": 10,

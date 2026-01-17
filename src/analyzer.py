@@ -73,11 +73,11 @@ def calculate_wallet_score(
     """
     Calculate composite score for a wallet.
     
-    Uses weighted algorithm based on:
-    - Consistency: Number of tokens appeared in (40%)
-    - Profitability: Total PnL in USD (25%)
-    - Win Rate: Percentage of profitable trades (20%)
-    - Position Size: Average buy amount (15%)
+    Uses weighted algorithm based on configurable weights for:
+    - Consistency: Number of tokens appeared in
+    - Profitability: Total PnL in USD
+    - Win Rate: Percentage of profitable trades
+    - Position Size: Average buy amount
     
     All components are normalized to 0-1 before weighting.
     Final score is scaled to 0-100.
@@ -337,63 +337,82 @@ def _parse_hold_time(hold_time_str: Optional[str]) -> Optional[float]:
     return None
 
 
-def calculate_degen_score(wallet: SmartWallet) -> float:
-    """
-    Calculate 'Degen Score' based on Birdeye metrics.
-    Focuses on 7D Win Rate, Realized PnL, and Conviction.
-    """
-    # 1. Base Score: Win Rate (prefer 7D)
-    win_rate = wallet.win_rate_7d if wallet.win_rate_7d is not None else wallet.win_rate
+def _score_hold_time(
+    wallet: SmartWallet,
+    scoring: dict
+) -> float:
+    """Score average holding time (0-1), penalizing short holds."""
+    hold_time_str = wallet.avg_holding_time_7d or wallet.avg_holding_time_30d
+    hold_mins = _parse_hold_time(hold_time_str)
+    if hold_mins is None:
+        return 0.5
     
-    # Filter: If 7D win rate is known and < 30%, kill score (unless very profitable realized)
-    if wallet.win_rate_7d is not None and wallet.win_rate_7d < 0.30:
-        # Check if they made huge realized profit despite low win rate (sniper luck)
-        if not (wallet.realized_pnl_7d and wallet.realized_pnl_7d > 5000):
-            return 0.0
+    min_hold = scoring["min_hold_time_minutes"]
+    max_hold = scoring["max_hold_time_minutes"]
+    if max_hold <= min_hold:
+        return 0.5
+    
+    return max(min((hold_mins - min_hold) / (max_hold - min_hold), 1.0), 0.0)
+
+
+def calculate_degen_score(
+    wallet: SmartWallet,
+    config: Optional[dict] = None
+) -> float:
+    """
+    Calculate overall score with heavier weighting on win rate and hold time.
+    """
+    if config is None:
+        config = load_config()
         
-    score = win_rate * 100.0
+    scoring = config["scoring"]
     
-    # 2. Appearance Bonus (Compound)
-    # appearances=2 -> 1.1x, 3->1.21x... cap it?
-    # Simple multiplier: 1.1 for each extra appearance
-    if wallet.appearances > 1:
-        score *= (1.1 ** (wallet.appearances - 1))
+    w_consistency = scoring["consistency_weight"]
+    w_profitability = scoring["profitability_weight"]
+    w_win_rate = scoring["win_rate_weight"]
+    w_hold_time = scoring["hold_time_weight"]
+    w_position = scoring["position_size_weight"]
     
-    # 3. Realized PnL Multiplier
-    if wallet.realized_pnl_7d is not None:
-        if wallet.realized_pnl_7d > 0:
-            score *= 1.2
-        elif wallet.realized_pnl_7d < 0:
-            score *= 0.5
-            
-    # 4. Bagholder Penalty
-    if wallet.unrealized_pnl_7d is not None and wallet.total_pnl > 0:
-        # If unrealized loss is significant compared to total profits reported by DEX screener
-        if wallet.unrealized_pnl_7d < -(wallet.total_pnl * 0.5):
-            score *= 0.7
-            
-    # 5. Holding Time Multiplier
-    hold_mins = _parse_hold_time(wallet.avg_holding_time_7d)
-    if hold_mins is not None:
-        if hold_mins < 10: # < 10 mins (Paper hands)
-            score *= 0.8
-        elif 60 <= hold_mins <= 2880: # 1h - 48h (Conviction)
-            score *= 1.1
-            
-    return round(min(score, 100.0), 2)
+    max_appearances = scoring["max_appearances_for_perfect_score"]
+    max_pnl = scoring["max_pnl_for_perfect_score"]
+    max_position = scoring["max_position_for_perfect_score"]
+    
+    win_rate = wallet.win_rate_7d if wallet.win_rate_7d is not None else wallet.win_rate
+    hold_score = _score_hold_time(wallet, scoring)
+    
+    appearances_score = min(wallet.appearances / max_appearances, 1.0)
+    total_pnl = max(wallet.total_pnl, 0)
+    profitability_score = min(total_pnl / max_pnl, 1.0)
+    position_score = min(wallet.avg_position_size / max_position, 1.0)
+    
+    score = (
+        win_rate * w_win_rate +
+        hold_score * w_hold_time +
+        appearances_score * w_consistency +
+        profitability_score * w_profitability +
+        position_score * w_position
+    )
+    
+    return round(score * 100, 2)
 
 
-def rescore_wallets(wallets: List[SmartWallet]) -> List[SmartWallet]:
+def rescore_wallets(
+    wallets: List[SmartWallet],
+    config: Optional[dict] = None
+) -> List[SmartWallet]:
     """
     Re-score and specific re-rank wallets after Birdeye enrichment.
     """
     logger.info("Rescoring wallets with Degen Score logic...")
     processed = []
     
+    if config is None:
+        config = load_config()
+    
     for w in wallets:
         # Only rescore if we have enriched data or want to enforce new logic
         # We replace the old score
-        new_score = calculate_degen_score(w)
+        new_score = calculate_degen_score(w, config)
         w.score = new_score
         
         # Determine strict filter (e.g. score must be > 0)
