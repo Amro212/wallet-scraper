@@ -2,15 +2,22 @@ import { useState, useEffect, useMemo } from 'react'
 import './App.css'
 
 // Load wallet data from JSON
+// Load wallet data from API or JSON
 const loadWalletData = async () => {
   try {
-    // Try to load from the data folder
-    const response = await fetch('/data/smart_wallets.json')
-    if (!response.ok) throw new Error('Failed to load')
-    return await response.json()
-  } catch {
-    // Return demo data if file not found
-    return []
+    // Try API first
+    const response = await fetch('http://localhost:8000/api/wallets')
+    if (response.ok) return await response.json()
+    throw new Error('API failed')
+  } catch (e) {
+    console.warn('API connection failed, falling back to static data:', e)
+    try {
+      const response = await fetch('/data/smart_wallets.json')
+      if (!response.ok) throw new Error('Failed to load')
+      return await response.json()
+    } catch {
+      return []
+    }
   }
 }
 

@@ -94,6 +94,11 @@ class DexScreenerScraper:
         
     async def __aenter__(self) -> "DexScreenerScraper":
         """Async context manager entry - starts browser."""
+        # Load URLs from config
+        scraping_config = self.config.get("scraping", {})
+        self.base_url = scraping_config.get("base_url", "https://dexscreener.com")
+        self.gainers_url = scraping_config.get("gainers_url", f"{self.base_url}/solana/pumpswap?rankBy=trendingScoreH1&order=desc")
+        
         await self.start()
         return self
         
@@ -239,8 +244,8 @@ class DexScreenerScraper:
         
         try:
             # Navigate to gainers page
-            logger.info(f"Navigating to {GAINERS_URL}")
-            await page.goto(GAINERS_URL, wait_until="networkidle")
+            logger.info(f"Navigating to {self.gainers_url}")
+            await page.goto(self.gainers_url, wait_until="networkidle")
             
             # Sort by Age (Newest First) - Click "Age" header twice
             try:
@@ -432,7 +437,7 @@ class DexScreenerScraper:
             - Some wallets may have incomplete data
         """
         limit = limit or self.config["scraping"]["top_traders_limit"]
-        token_url = f"{BASE_URL}/solana/{token_address}"
+        token_url = f"{self.base_url}/solana/{token_address}"
         
         logger.info(f"Scraping top traders for {token_symbol} ({token_address[:10]}...)...")
         
