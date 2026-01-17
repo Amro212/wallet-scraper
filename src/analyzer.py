@@ -422,6 +422,8 @@ def rescore_wallets(
     if config is None:
         config = load_config()
     
+    scoring = config.get("scoring", {})
+    
     for w in wallets:
         if _is_hold_time_bot(w, scoring):
             logger.debug(f"Filtered {w.get_short_address()} after rescore (HoldTime<Min)")
