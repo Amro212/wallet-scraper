@@ -7,7 +7,7 @@ and validation methods.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 
 @dataclass
@@ -198,8 +198,8 @@ class WalletStats:
         return sum(t.txn_count for t in self.trades)
     
     @property
-    def tokens_list(self) -> List[Dict[str, str]]:
-        """List of unique tokens traded (symbol, address, dex_url)."""
+    def tokens_list(self) -> List[Dict[str, Any]]:
+        """List of unique tokens traded (symbol, address, dex_url, pnl_usd)."""
         # Use a dict to dedupe by token_address, keeping all info
         tokens_map = {}
         for t in self.trades:
@@ -207,6 +207,7 @@ class WalletStats:
                 tokens_map[t.token_address] = {
                     "symbol": t.token_symbol,
                     "address": t.token_address,
-                    "dex_url": t.dex_url or f"https://dexscreener.com/solana/{t.token_address}"
+                    "dex_url": t.dex_url or f"https://dexscreener.com/solana/{t.token_address}",
+                    "pnl_usd": t.pnl_usd
                 }
         return list(tokens_map.values())

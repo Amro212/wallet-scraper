@@ -31,27 +31,58 @@ function ScoreBadge({ score }) {
   )
 }
 
-// Token badge with DexScreener link
+// Copy to clipboard button
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="ml-2 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+      title="Copy full address"
+    >
+      {copied ? '✓' : '📋'}
+    </button>
+  )
+}
+
+// Token badge with DexScreener link and PnL
 function TokenBadge({ token }) {
   // Handle both string (legacy) and object formats
   const isObject = typeof token === 'object' && token !== null
   const address = isObject ? token.address : token
   const label = isObject ? token.symbol : (address.slice(0, 4) + '...')
+  const pnl = isObject ? (token.pnl_usd || 0) : 0
 
   // Use dex_url from data if available, otherwise construct from address
   const url = isObject && token.dex_url
     ? token.dex_url
     : `https://dexscreener.com/solana/${address}`
 
+  // Format PnL with color
+  const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400'
+  const pnlStr = pnl >= 0 ? `+$${Math.round(pnl).toLocaleString()}` : `-$${Math.abs(Math.round(pnl)).toLocaleString()}`
+
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="token-badge inline-block px-2 py-1 bg-blue-900/50 text-blue-400 rounded text-xs font-mono hover:bg-blue-800/60 transition-colors"
+      className="token-badge inline-flex items-center gap-1 px-2 py-1 bg-blue-900/50 rounded text-xs font-mono hover:bg-blue-800/60 transition-colors"
       title={address}
     >
-      {label}
+      <span className="text-blue-400">{label}</span>
+      <span className={pnlColor}>{pnlStr}</span>
     </a>
   )
 }
@@ -92,7 +123,10 @@ function WalletCard({ wallet }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <span className="text-gray-400 text-xs">#{wallet.rank}</span>
-          <h3 className="font-mono text-lg text-white">🦅 {shortAddress}</h3>
+          <h3 className="font-mono text-lg text-white flex items-center">
+            🦅 {shortAddress}
+            <CopyButton text={wallet.wallet_address} />
+          </h3>
         </div>
         <ScoreBadge score={parseFloat(wallet.score)} />
       </div>
@@ -119,7 +153,6 @@ function WalletCard({ wallet }) {
       {/* Additional Stats */}
       <div className="flex gap-4 text-sm text-gray-400 mb-4">
         <span>👁 {wallet.appearances} appearances</span>
-        <span>💰 ${wallet.total_pnl} total PnL</span>
       </div>
 
       {/* Token Appearances */}
