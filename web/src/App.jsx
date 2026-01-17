@@ -31,7 +31,10 @@ function TokenBadge({ token }) {
   const address = isObject ? token.address : token
   const label = isObject ? token.symbol : (address.slice(0, 4) + '...')
 
-  const url = `https://dexscreener.com/solana/${address}`
+  // Use dex_url from data if available, otherwise construct from address
+  const url = isObject && token.dex_url
+    ? token.dex_url
+    : `https://dexscreener.com/solana/${address}`
 
   return (
     <a

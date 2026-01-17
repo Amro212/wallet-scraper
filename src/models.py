@@ -16,20 +16,24 @@ class Token:
     Represents a successful Solana memecoin from DEX Screener.
     
     Attributes:
-        address: Token contract address on Solana
+        address: Token contract address on Solana (base58, case-sensitive)
+        pair_address: DEX pair address (from URL, may be lowercase)
         name: Human-readable token name
         symbol: Token ticker symbol
         volume_24h: 24-hour trading volume in USD
         price_change_24h: 24-hour price change percentage
         market_cap: Market capitalization in USD
+        dex_url: Full DexScreener URL for this token
         timestamp: When the token data was scraped
     """
-    address: str
+    address: str  # The actual token address (from API)
+    pair_address: str  # The pair address from URL
     name: str
     symbol: str
     volume_24h: float
     price_change_24h: float
     market_cap: float = 0.0
+    dex_url: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     
     def is_valid(self) -> bool:
@@ -71,6 +75,7 @@ class Trader:
     bought_usd: float
     sold_usd: float
     pnl_usd: float
+    dex_url: str = ""
     txn_count: int = 0
     timestamp: datetime = field(default_factory=datetime.now)
     
@@ -194,6 +199,14 @@ class WalletStats:
     
     @property
     def tokens_list(self) -> List[Dict[str, str]]:
-        """List of unique tokens traded (symbol + address)."""
-        unique = set((t.token_symbol, t.token_address) for t in self.trades)
-        return [{"symbol": s, "address": a} for s, a in unique]
+        """List of unique tokens traded (symbol, address, dex_url)."""
+        # Use a dict to dedupe by token_address, keeping all info
+        tokens_map = {}
+        for t in self.trades:
+            if t.token_address not in tokens_map:
+                tokens_map[t.token_address] = {
+                    "symbol": t.token_symbol,
+                    "address": t.token_address,
+                    "dex_url": t.dex_url or f"https://dexscreener.com/solana/{t.token_address}"
+                }
+        return list(tokens_map.values())

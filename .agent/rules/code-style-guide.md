@@ -464,6 +464,9 @@ API_BASE = "https://api.solscan.io"
 API_BASE = "http://api.solscan.io"
 ```
 
+
+### Rule 32: DO NOT DOWNLOAD DEPENDENCIES GLOBALLY, USE THE VIRTUAL ENVIRONMENT AVAILABLE TO DOWNLOAD ON I
+
 ---
 
 ## Final Checklist

@@ -2,7 +2,7 @@
     "scraping": {
         "delay_min_seconds": 2.0,
         "delay_max_seconds": 4.0,
-        "max_tokens_per_run": 5,
+        "max_tokens_per_run": 50,
         "top_traders_limit": 100,
         "page_load_timeout_ms": 30000,
         "retry_attempts": 3,
@@ -12,14 +12,15 @@
     "filters": {
         "min_token_volume": 100000,
         "min_price_gain_pct": 30,
-        "min_market_cap": 50000,
-        "min_appearances": 2,
-        "min_total_pnl": 650,
+        "min_market_cap": 100000,
+        "min_appearances": 5,
+        "min_total_pnl": 850,
         "min_transactions": 3,
         "wallet_blacklist": [
             "gasAx5Y917MYdmdnwiomwYDhmDKNGDJnN1MmEbxVdVw",
             "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
-            "54Pz1e35z9uoFdnxtzjp7xZQoFiofqhdayQWBMN7dsuy"
+            "54Pz1e35z9uoFdnxtzjp7xZQoFiofqhdayQWBMN7dsuy",
+            "8avtb3GZapmpYWUjXoJYCXfATRBhH8SGQkyDSoqF6CPC"
         ]
     },
     "scoring": {

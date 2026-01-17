@@ -9,10 +9,14 @@ import json
 import logging
 import os
 import re
+import requests
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import pandas as pd
+
+# DexScreener API
+DEXSCREENER_API_BASE = "https://api.dexscreener.com/latest/dex"
 
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -481,3 +485,60 @@ def format_percentage(value: float, precision: int = 1) -> str:
     """
     prefix = "+" if value > 0 else ""
     return f"{prefix}{value:.{precision}f}%"
+
+
+def fetch_token_metadata(pair_address: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch token metadata from DexScreener API.
+    
+    The pair address from the URL is used to get the actual token address,
+    symbol, and name from the DexScreener API.
+    
+    Args:
+        pair_address: Pair address from DexScreener URL
+        
+    Returns:
+        Dict with token metadata or None if API fails
+        
+    Example:
+        >>> fetch_token_metadata("99rj6jkzpb5wdwyv6cyk8s9dx4irsuqqka1eupcd5mqt")
+        {
+            "token_address": "BBSAW49Sru7jiSajWVKTSWs39psrjjHbMMtWGWTJBAGS",
+            "symbol": "TERRA",
+            "name": "Terraformation",
+            "dex_url": "https://dexscreener.com/solana/99rj6..."
+        }
+    """
+    logger = logging.getLogger("wallet_tracker")
+    
+    try:
+        # Call DexScreener API
+        url = f"{DEXSCREENER_API_BASE}/pairs/solana/{pair_address}"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # API returns "pair" or "pairs" depending on endpoint
+        pair_data = data.get("pair") or (data.get("pairs", [{}])[0] if data.get("pairs") else None)
+        
+        if not pair_data:
+            logger.warning(f"No pair data found for {pair_address}")
+            return None
+        
+        # Extract base token info (the memecoin, not SOL)
+        base_token = pair_data.get("baseToken", {})
+        
+        return {
+            "token_address": base_token.get("address", pair_address),
+            "symbol": base_token.get("symbol", "UNKNOWN"),
+            "name": base_token.get("name", "Unknown Token"),
+            "dex_url": pair_data.get("url", f"https://dexscreener.com/solana/{pair_address}")
+        }
+        
+    except requests.RequestException as e:
+        logger.warning(f"API request failed for {pair_address}: {e}")
+        return None
+    except (KeyError, IndexError) as e:
+        logger.warning(f"Failed to parse API response for {pair_address}: {e}")
+        return None

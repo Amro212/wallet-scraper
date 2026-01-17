@@ -40,6 +40,7 @@ from .models import Token, Trader, SmartWallet
 from .utils import (
     extract_token_from_dexscreener_url,
     extract_wallet_from_solscan_url,
+    fetch_token_metadata,
     load_config,
     parse_currency,
     parse_percentage,
@@ -325,19 +326,32 @@ class DexScreenerScraper:
             Token object or None if parsing fails
         """
         try:
-            # Get token address from href
+            # Get pair address from href (this is NOT the token address)
             href = await row.get_attribute("href")
-            address = extract_token_from_dexscreener_url(href)
-            if not address:
+            pair_address = extract_token_from_dexscreener_url(href)
+            if not pair_address:
                 return None
             
-            # Try to get data from specific column selectors (more reliable)
-            volume = 0.0
-            price_change = 0.0
-            name = "Unknown"
-            symbol = "Unknown"
+            # Fetch real token metadata from DexScreener API
+            metadata = fetch_token_metadata(pair_address)
+            
+            if metadata:
+                token_address = metadata.get("token_address", pair_address)
+                symbol = metadata.get("symbol", "UNKNOWN")
+                name = metadata.get("name", "Unknown Token")
+                dex_url = metadata.get("dex_url", f"https://dexscreener.com/solana/{pair_address}")
+            else:
+                # Fallback: use pair_address and scrape from DOM
+                token_address = pair_address
+                dex_url = f"https://dexscreener.com/solana/{pair_address}"
+                # Try to get symbol from page
+                symbol_el = await row.query_selector(".ds-dex-table-row-base-token-symbol")
+                symbol = await symbol_el.inner_text() if symbol_el else "UNKNOWN"
+                name_el = await row.query_selector(".ds-dex-table-row-base-token-name-text")
+                name = await name_el.inner_text() if name_el else symbol
             
             # Get volume from the volume column
+            volume = 0.0
             volume_cell = await row.query_selector(".ds-dex-table-row-col-volume")
             if volume_cell:
                 volume_text = await volume_cell.inner_text()
@@ -345,7 +359,8 @@ class DexScreenerScraper:
                 if parsed_volume is not None:
                     volume = parsed_volume
             
-            # Get 6H price change from the specific column (user wants 6H, not 24H)
+            # Get 6H price change from the specific column
+            price_change = 0.0
             price_cell = await row.query_selector(".ds-dex-table-row-col-price-change-h6")
             if price_cell:
                 price_text = await price_cell.inner_text()
@@ -362,46 +377,17 @@ class DexScreenerScraper:
                 if parsed_mcap is not None:
                     market_cap = parsed_mcap
             
-            # Get token name/symbol from first cells
-            text_content = await row.inner_text()
-            lines = [line.strip() for line in text_content.split("\n") if line.strip()]
-            
-            # Skip rank (e.g., #1), get the token name
-            for line in lines:
-                if not line.startswith("#") and line != "/" and line != "SOL":
-                    name = line
-                    symbol = name.split("/")[0] if "/" in name else name
-                    break
-            
-            # Fallback: if column selectors failed, try text parsing
-            if volume == 0.0:
-                for line in lines:
-                    if "$" in line and ("K" in line.upper() or "M" in line.upper() or "B" in line.upper()):
-                        parsed = parse_currency(line)
-                        if parsed and parsed > volume:
-                            volume = parsed
-            
-            if price_change == 0.0:
-                # Look for percentage values - typically the last few are price changes
-                percentages = []
-                for line in lines:
-                    if "%" in line:
-                        parsed = parse_percentage(line)
-                        if parsed is not None:
-                            percentages.append(parsed)
-                # Take the largest percentage as 24h change (gainers have high % gains)
-                if percentages:
-                    price_change = max(percentages)
-            
-            logger.debug(f"Parsed token: {symbol} vol=${volume:,.0f} change={price_change:.1f}% mcap=${market_cap:,.0f}")
+            logger.debug(f"Parsed token: {symbol} ({token_address[:8]}...) vol=${volume:,.0f} change={price_change:.1f}%")
             
             return Token(
-                address=address,
+                address=token_address,
+                pair_address=pair_address,
                 name=name,
                 symbol=symbol,
                 volume_24h=volume,
                 price_change_24h=price_change,
                 market_cap=market_cap,
+                dex_url=dex_url,
                 timestamp=datetime.now()
             )
             
@@ -425,6 +411,7 @@ class DexScreenerScraper:
         self,
         token_address: str,
         token_symbol: str = "?",
+        dex_url: str = "",
         limit: Optional[int] = None
     ) -> List[Trader]:
         """
@@ -497,7 +484,7 @@ class DexScreenerScraper:
             processed_wallets = set()
             for element in wallet_elements:
                 trader = await self._parse_trader_element(
-                    page, element, token_address, token_symbol
+                    page, element, token_address, token_symbol, dex_url
                 )
                 if trader and trader.wallet_address not in processed_wallets:
                     traders.append(trader)
@@ -577,7 +564,8 @@ class DexScreenerScraper:
         page: Page,
         wallet_element,
         token_address: str,
-        token_symbol: str
+        token_symbol: str,
+        dex_url: str = ""
     ) -> Optional[Trader]:
         """
         Parse trader data from wallet link element and surrounding context.
@@ -699,6 +687,7 @@ class DexScreenerScraper:
                 wallet_address=wallet_address,
                 token_address=token_address,
                 token_symbol=token_symbol,
+                dex_url=dex_url,
                 bought_usd=bought,
                 sold_usd=sold,
                 pnl_usd=pnl,

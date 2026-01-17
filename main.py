@@ -29,6 +29,7 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.analyzer import analyze_traders, rescore_wallets
+from src.database import get_database
 from src.models import SmartWallet, Token, Trader
 from src.scraper import DexScreenerScraper
 from src.birdeye import BirdeyeScraper
@@ -143,9 +144,13 @@ def save_results(
     
     # Save smart wallets
     if wallets:
-        # Prepare rich data for JSON (web app)
-        json_data = [
-            {
+        # Get database instance
+        db = get_database()
+        
+        # Prepare rich data for JSON (web app) and database
+        json_data = []
+        for i, w in enumerate(wallets, 1):
+            wallet_dict = {
                 "rank": i,
                 "wallet_address": w.wallet_address,
                 "score": round(w.score, 1),
@@ -164,17 +169,36 @@ def save_results(
                 "realized_pnl_30d": round(w.realized_pnl_30d) if w.realized_pnl_30d is not None else "-",
                 "unrealized_pnl_30d": round(w.unrealized_pnl_30d) if w.unrealized_pnl_30d is not None else "-",
                 "avg_holding_time_30d": w.avg_holding_time_30d or "-",
-                # Token list (Full objects)
+                # Token list (Full objects with dex_url)
                 "tokens_list": w.tokens_list
             }
-            for i, w in enumerate(wallets, 1)
-        ]
+            json_data.append(wallet_dict)
+            
+            # Save to database (with raw numeric values for proper storage)
+            db.upsert_smart_wallet({
+                "wallet_address": w.wallet_address,
+                "score": w.score,
+                "appearances": w.appearances,
+                "total_pnl": w.total_pnl,
+                "avg_pnl": w.avg_pnl,
+                "avg_position_size": w.avg_position_size,
+                "total_txn_count": w.total_txn_count,
+                "win_rate_7d": w.win_rate_7d,
+                "realized_pnl_7d": w.realized_pnl_7d,
+                "unrealized_pnl_7d": w.unrealized_pnl_7d,
+                "avg_holding_time_7d": w.avg_holding_time_7d,
+                "win_rate_30d": w.win_rate_30d,
+                "realized_pnl_30d": w.realized_pnl_30d,
+                "unrealized_pnl_30d": w.unrealized_pnl_30d,
+                "avg_holding_time_30d": w.avg_holding_time_30d,
+                "tokens_list": w.tokens_list
+            })
 
         # Prepare flat data for CSV/XLSX
         csv_data = []
         for item in json_data:
             flat_item = item.copy()
-            # Flatten tokens list to string: "SYMBOL ($ADDR...)"
+            # Flatten tokens list to string: "SYMBOL (ADDR...)"
             tokens = []
             for t in item['tokens_list']:
                 # Handle both dict and potentially string if something failed
@@ -193,9 +217,13 @@ def save_results(
         xlsx_file = output["smart_wallets_file"].replace(".csv", ".xlsx")
         save_to_xlsx(csv_data, xlsx_file)
         
-        # Save as JSON for web dashboard
+        # Export ALL wallets from DB to JSON (not just current run)
         json_file = output["smart_wallets_file"].replace(".csv", ".json")
-        save_to_json(json_data, json_file)
+        db.export_smart_wallets_to_json(json_file)
+        
+        # Also copy to web dashboard location
+        web_json = Path("web/public/data/smart_wallets.json")
+        db.export_smart_wallets_to_json(web_json)
         
         logger.info(f"Saved {len(wallets)} smart wallets to:")
         logger.info(f"  - CSV: {output['smart_wallets_file']}")
@@ -254,7 +282,7 @@ async def main() -> None:
             for token in pbar:
                 pbar.set_postfix_str(f"{token.symbol[:10]}")
                 
-                traders = await scraper.get_top_traders(token.address, token.symbol)
+                traders = await scraper.get_top_traders(token.address, token.symbol, token.dex_url)
                 all_traders.extend(traders)
                 
             print(f"✅ Scraped {len(all_traders)} trader records\n")
