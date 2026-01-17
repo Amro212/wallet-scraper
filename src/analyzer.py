@@ -12,6 +12,7 @@ Scoring Algorithm:
 """
 
 from collections import defaultdict
+import math
 import re
 from typing import Dict, List, Optional
 
@@ -348,11 +349,23 @@ def _score_hold_time(
         return 0.5
     
     min_hold = scoring["min_hold_time_minutes"]
-    max_hold = scoring["max_hold_time_minutes"]
-    if max_hold <= min_hold:
-        return 0.5
+    if hold_mins <= min_hold:
+        return 0.0
     
-    return max(min((hold_mins - min_hold) / (max_hold - min_hold), 1.0), 0.0)
+    # Asymptotic curve: longer hold => higher score with diminishing returns.
+    score = 1 - math.exp(-(hold_mins - min_hold) / min_hold)
+    return max(min(score, 1.0), 0.0)
+
+
+def _is_hold_time_bot(wallet: SmartWallet, scoring: dict) -> bool:
+    """Return True when 7D or 30D hold time is below the minimum threshold."""
+    min_hold = scoring["min_hold_time_minutes"]
+    hold_times = [wallet.avg_holding_time_7d, wallet.avg_holding_time_30d]
+    for hold_time_str in hold_times:
+        hold_mins = _parse_hold_time(hold_time_str)
+        if hold_mins is not None and hold_mins < min_hold:
+            return True
+    return False
 
 
 def calculate_degen_score(
@@ -410,6 +423,9 @@ def rescore_wallets(
         config = load_config()
     
     for w in wallets:
+        if _is_hold_time_bot(w, scoring):
+            logger.debug(f"Filtered {w.get_short_address()} after rescore (HoldTime<Min)")
+            continue
         # Only rescore if we have enriched data or want to enforce new logic
         # We replace the old score
         new_score = calculate_degen_score(w, config)

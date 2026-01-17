@@ -110,8 +110,7 @@ def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
             "max_appearances_for_perfect_score": 10,
             "max_pnl_for_perfect_score": 50000,
             "max_position_for_perfect_score": 5000,
-            "min_hold_time_minutes": 60,
-            "max_hold_time_minutes": 2880
+            "min_hold_time_minutes": 60
         },
         "output": {
             "top_wallets_to_display": 10,
