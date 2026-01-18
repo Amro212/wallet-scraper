@@ -23,8 +23,12 @@ app.add_middleware(
 @app.get("/api/wallets")
 async def get_wallets():
     """Get all smart wallets from the database."""
-    db = get_database()
-    wallets = db.get_all_smart_wallets()
+    try:
+        db = get_database()
+        wallets = db.get_all_smart_wallets()
+    except Exception as e:
+        print(f"Database error: {e}")
+        return []
     
     # Process wallets for frontend (mirroring export logic)
     processed_wallets = []

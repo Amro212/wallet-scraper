@@ -322,18 +322,22 @@ async def main() -> None:
         limit = min(len(smart_wallets), 20)
         to_enrich = smart_wallets[:limit]
         
-        MAX_CONCURRENT_BIRDEYE = 3
+        MAX_CONCURRENT_BIRDEYE = 2  # Reduced to avoid rate limiting
         birdeye_sem = asyncio.Semaphore(MAX_CONCURRENT_BIRDEYE)
         
-        async def enrich_with_semaphore(birdeye, wallet, pbar):
+        async def enrich_with_semaphore(birdeye, wallet, pbar, index):
             async with birdeye_sem:
+                # Add delay between requests to avoid rate limiting
+                # Stagger based on position to spread out requests
+                delay = 2.0 + (index % 5) * 1.0  # 2-6 seconds stagger
+                await asyncio.sleep(delay)
                 result = await birdeye.enrich_wallet(wallet)
                 pbar.update(1)
                 return result
         
         async with BirdeyeScraper(config) as birdeye:
             pbar = tqdm(total=len(to_enrich), desc="Enriching", unit="wallet")
-            tasks = [enrich_with_semaphore(birdeye, w, pbar) for w in to_enrich]
+            tasks = [enrich_with_semaphore(birdeye, w, pbar, i) for i, w in enumerate(to_enrich)]
             await asyncio.gather(*tasks)
             pbar.close()
         print(f"✅ Enriched {len(to_enrich)} wallets\n")

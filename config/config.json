@@ -13,11 +13,11 @@
     },
     "filters": {
         "min_token_volume": 100000,
-        "min_price_gain_pct": 0,
+        "min_price_gain_pct": 20,
         "min_market_cap": 150000,
-        "min_appearances": 3,
+        "min_appearances": 4,
         "min_total_pnl": 1500,
-        "min_transactions": 3,
+        "min_transactions": 2,
         "wallet_blacklist": [
             "gasAx5Y917MYdmdnwiomwYDhmDKNGDJnN1MmEbxVdVw",
             "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
