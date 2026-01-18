@@ -342,6 +342,17 @@ async def main() -> None:
             pbar.close()
         print(f"✅ Enriched {len(to_enrich)} wallets\n")
         
+        # Filter out wallets with no Birdeye win rate data (both 7D AND 30D missing)
+        before_filter = len(smart_wallets)
+        smart_wallets = [
+            w for w in smart_wallets 
+            if w.win_rate_7d is not None or w.win_rate_30d is not None
+        ]
+        discarded = before_filter - len(smart_wallets)
+        if discarded > 0:
+            logger.info(f"Discarded {discarded} wallets with no Birdeye win rate data")
+            print(f"🗑️ Discarded {discarded} wallets with no win rate data\n")
+        
         # Rescore and re-rank with Degen Score
         smart_wallets = rescore_wallets(smart_wallets)
     
