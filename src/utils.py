@@ -5,11 +5,13 @@ Provides helpers for parsing, logging, configuration, and data persistence.
 """
 
 import csv
+import asyncio
 import json
 import logging
 import os
 import re
 import requests
+import aiohttp
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -17,6 +19,9 @@ import pandas as pd
 
 # DexScreener API
 DEXSCREENER_API_BASE = "https://api.dexscreener.com/latest/dex"
+
+# In-memory cache for token metadata (keyed by pair_address)
+_metadata_cache: Dict[str, Dict[str, Any]] = {}
 
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -539,6 +544,71 @@ def fetch_token_metadata(pair_address: str) -> Optional[Dict[str, Any]]:
         }
         
     except requests.RequestException as e:
+        logger.warning(f"API request failed for {pair_address}: {e}")
+        return None
+    except (KeyError, IndexError) as e:
+        logger.warning(f"Failed to parse API response for {pair_address}: {e}")
+        return None
+
+
+async def fetch_token_metadata_async(
+    session: aiohttp.ClientSession,
+    pair_address: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Async version of fetch_token_metadata using aiohttp.
+    
+    Uses in-memory cache to avoid duplicate API calls.
+    
+    Args:
+        session: aiohttp ClientSession (reused for connection pooling)
+        pair_address: Pair address from DexScreener URL
+        
+    Returns:
+        Dict with token metadata or None if API fails
+    """
+    logger = logging.getLogger("wallet_tracker")
+    
+    # Check cache first
+    if pair_address in _metadata_cache:
+        logger.debug(f"Cache hit for {pair_address[:8]}...")
+        return _metadata_cache[pair_address]
+    
+    try:
+        url = f"{DEXSCREENER_API_BASE}/pairs/solana/{pair_address}"
+        timeout = aiohttp.ClientTimeout(total=10)
+        
+        async with session.get(url, timeout=timeout) as resp:
+            if resp.status != 200:
+                logger.warning(f"API returned {resp.status} for {pair_address}")
+                return None
+            
+            data = await resp.json()
+        
+        # Parse response
+        pair_data = data.get("pair") or (data.get("pairs", [{}])[0] if data.get("pairs") else None)
+        
+        if not pair_data:
+            logger.warning(f"No pair data found for {pair_address}")
+            return None
+        
+        base_token = pair_data.get("baseToken", {})
+        
+        result = {
+            "token_address": base_token.get("address", pair_address),
+            "symbol": base_token.get("symbol", "UNKNOWN"),
+            "name": base_token.get("name", "Unknown Token"),
+            "dex_url": pair_data.get("url", f"https://dexscreener.com/solana/{pair_address}")
+        }
+        
+        # Cache the result
+        _metadata_cache[pair_address] = result
+        return result
+        
+    except asyncio.TimeoutError:
+        logger.warning(f"API timeout for {pair_address}")
+        return None
+    except aiohttp.ClientError as e:
         logger.warning(f"API request failed for {pair_address}: {e}")
         return None
     except (KeyError, IndexError) as e:

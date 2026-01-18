@@ -3,7 +3,7 @@
         "delay_min_seconds": 2.0,
         "delay_max_seconds": 4.0,
         "base_url": "https://dexscreener.com",
-        "gainers_url": "https://dexscreener.com/gainers/solana?rankBy=priceChangeH24&order=desc&dexIds=pumpswap&minLiq=250000&min24HTxns=300&min24HSells=30&min24HVol=100000&profile=1",
+        "gainers_url": "https://dexscreener.com/solana/pumpswap?rankBy=trendingScoreH6&order=desc",
         "max_tokens_per_run": 50,
         "top_traders_limit": 100,
         "page_load_timeout_ms": 30000,
@@ -14,8 +14,8 @@
     "filters": {
         "min_token_volume": 100000,
         "min_price_gain_pct": 0,
-        "min_market_cap": 100000,
-        "min_appearances": 5,
+        "min_market_cap": 150000,
+        "min_appearances": 3,
         "min_total_pnl": 1500,
         "min_transactions": 3,
         "wallet_blacklist": [

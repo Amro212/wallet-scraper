@@ -26,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import aiohttp
+
 from playwright.async_api import (
     Browser,
     BrowserContext,
@@ -41,6 +43,7 @@ from .utils import (
     extract_token_from_dexscreener_url,
     extract_wallet_from_solscan_url,
     fetch_token_metadata,
+    fetch_token_metadata_async,
     load_config,
     parse_currency,
     parse_percentage,
@@ -91,13 +94,17 @@ class DexScreenerScraper:
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self._playwright: Optional[Playwright] = None
+        self._aiohttp_session: Optional[aiohttp.ClientSession] = None
         
     async def __aenter__(self) -> "DexScreenerScraper":
-        """Async context manager entry - starts browser."""
+        """Async context manager entry - starts browser and HTTP session."""
         # Load URLs from config
         scraping_config = self.config.get("scraping", {})
         self.base_url = scraping_config.get("base_url", "https://dexscreener.com")
         self.gainers_url = scraping_config.get("gainers_url", f"{self.base_url}/solana/pumpswap?rankBy=trendingScoreH1&order=desc")
+        
+        # Create shared aiohttp session for API calls
+        self._aiohttp_session = aiohttp.ClientSession()
         
         await self.start()
         return self
@@ -153,7 +160,9 @@ class DexScreenerScraper:
         logger.info(f"Browser started with viewport {viewport_width}x{viewport_height}")
         
     async def close(self) -> None:
-        """Close browser and cleanup resources."""
+        """Close browser, HTTP session, and cleanup resources."""
+        if self._aiohttp_session:
+            await self._aiohttp_session.close()
         if self.context:
             await self.context.close()
         if self.browser:
@@ -174,6 +183,16 @@ class DexScreenerScraper:
             
         page = await self.context.new_page()
         await stealth_async(page)
+        
+        # Block unnecessary resources to speed up page load
+        async def block_resources(route):
+            if route.request.resource_type in ("image", "media", "font"):
+                await route.abort()
+            else:
+                await route.continue_()
+        
+        await page.route("**/*", block_resources)
+        
         return page
         
     async def _random_delay(self) -> None:
@@ -243,9 +262,9 @@ class DexScreenerScraper:
         tokens: List[Token] = []
         
         try:
-            # Navigate to gainers page
+            # Navigate to gainers page (domcontentloaded is faster than networkidle)
             logger.info(f"Navigating to {self.gainers_url}")
-            await page.goto(self.gainers_url, wait_until="networkidle")
+            await page.goto(self.gainers_url, wait_until="domcontentloaded")
             
             # Sort by Age (Newest First) - Click "Age" header twice
             try:
@@ -337,8 +356,12 @@ class DexScreenerScraper:
             if not pair_address:
                 return None
             
-            # Fetch real token metadata from DexScreener API
-            metadata = fetch_token_metadata(pair_address)
+            # Fetch real token metadata from DexScreener API (async with caching)
+            if self._aiohttp_session:
+                metadata = await fetch_token_metadata_async(self._aiohttp_session, pair_address)
+            else:
+                # Fallback to sync version if session not available
+                metadata = fetch_token_metadata(pair_address)
             
             if metadata:
                 token_address = metadata.get("token_address", pair_address)

@@ -275,15 +275,30 @@ async def main() -> None:
             
             print(f"✅ Found {len(tokens)} trending tokens\n")
             
-            # Step 2: Scrape top traders for each token
+            # Step 2: Scrape top traders for each token (parallel with bounded concurrency)
             print("👛 Scraping top traders...")
             
-            pbar = tqdm(tokens, desc="Scraping tokens", unit="token")
-            for token in pbar:
-                pbar.set_postfix_str(f"{token.symbol[:10]}")
-                
-                traders = await scraper.get_top_traders(token.address, token.symbol, token.dex_url)
-                all_traders.extend(traders)
+            MAX_CONCURRENT_TOKENS = 4  # Balance speed vs rate limiting
+            token_sem = asyncio.Semaphore(MAX_CONCURRENT_TOKENS)
+            
+            async def scrape_token_with_semaphore(token, pbar):
+                async with token_sem:
+                    pbar.set_postfix_str(f"{token.symbol[:10]}")
+                    traders = await scraper.get_top_traders(token.address, token.symbol, token.dex_url)
+                    pbar.update(1)
+                    return traders
+            
+            pbar = tqdm(total=len(tokens), desc="Scraping tokens", unit="token")
+            tasks = [scrape_token_with_semaphore(t, pbar) for t in tokens]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            pbar.close()
+            
+            # Flatten results, skip exceptions
+            for result in results:
+                if isinstance(result, list):
+                    all_traders.extend(result)
+                elif isinstance(result, Exception):
+                    logger.warning(f"Token scrape failed: {result}")
                 
             print(f"✅ Scraped {len(all_traders)} trader records\n")
     
@@ -300,17 +315,27 @@ async def main() -> None:
     smart_wallets = analyze_traders(all_traders, config)
     print(f"✅ Identified {len(smart_wallets)} smart wallets\n")
     
-    # Step 4: Enrich wallets with Birdeye data
+    # Step 4: Enrich wallets with Birdeye data (parallel with bounded concurrency)
     if smart_wallets:
         print("🦅 Enriching top wallets with Birdeye data...")
         # Enrich top 20 wallets to balance speed/depth
         limit = min(len(smart_wallets), 20)
         to_enrich = smart_wallets[:limit]
         
+        MAX_CONCURRENT_BIRDEYE = 3
+        birdeye_sem = asyncio.Semaphore(MAX_CONCURRENT_BIRDEYE)
+        
+        async def enrich_with_semaphore(birdeye, wallet, pbar):
+            async with birdeye_sem:
+                result = await birdeye.enrich_wallet(wallet)
+                pbar.update(1)
+                return result
+        
         async with BirdeyeScraper(config) as birdeye:
-            pbar = tqdm(to_enrich, desc="Enriching", unit="wallet")
-            for wallet in pbar:
-                await birdeye.enrich_wallet(wallet)
+            pbar = tqdm(total=len(to_enrich), desc="Enriching", unit="wallet")
+            tasks = [enrich_with_semaphore(birdeye, w, pbar) for w in to_enrich]
+            await asyncio.gather(*tasks)
+            pbar.close()
         print(f"✅ Enriched {len(to_enrich)} wallets\n")
         
         # Rescore and re-rank with Degen Score
