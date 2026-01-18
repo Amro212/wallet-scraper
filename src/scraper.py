@@ -364,9 +364,9 @@ class DexScreenerScraper:
                 if parsed_volume is not None:
                     volume = parsed_volume
             
-            # Get 6H price change from the specific column
+            # Get 24H price change from the specific column
             price_change = 0.0
-            price_cell = await row.query_selector(".ds-dex-table-row-col-price-change-h6")
+            price_cell = await row.query_selector(".ds-dex-table-row-col-price-change-h24")
             if price_cell:
                 price_text = await price_cell.inner_text()
                 parsed_price = parse_percentage(price_text)

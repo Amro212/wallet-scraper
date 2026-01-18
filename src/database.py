@@ -55,7 +55,7 @@ class Database:
                     symbol TEXT NOT NULL,
                     name TEXT,
                     volume_24h REAL,
-                    price_change_6h REAL,
+                    price_change_24h REAL,
                     market_cap REAL,
                     dex_url TEXT,
                     first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -118,14 +118,14 @@ class Database:
             cursor.execute("""
                 INSERT INTO tokens (
                     pair_address, token_address, symbol, name,
-                    volume_24h, price_change_6h, market_cap, dex_url, last_updated
+                    volume_24h, price_change_24h, market_cap, dex_url, last_updated
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(pair_address) DO UPDATE SET
                     token_address = excluded.token_address,
                     symbol = excluded.symbol,
                     name = excluded.name,
                     volume_24h = excluded.volume_24h,
-                    price_change_6h = excluded.price_change_6h,
+                    price_change_24h = excluded.price_change_24h,
                     market_cap = excluded.market_cap,
                     dex_url = excluded.dex_url,
                     last_updated = excluded.last_updated
@@ -135,7 +135,7 @@ class Database:
                 token_data.get("symbol"),
                 token_data.get("name"),
                 token_data.get("volume_24h"),
-                token_data.get("price_change_6h"),
+                token_data.get("price_change_24h"),
                 token_data.get("market_cap"),
                 token_data.get("dex_url"),
                 datetime.now().isoformat()
