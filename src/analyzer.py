@@ -368,43 +368,143 @@ def _is_hold_time_bot(wallet: SmartWallet, scoring: dict) -> bool:
     return False
 
 
+def _is_identical_hold_time_bot(wallet: SmartWallet) -> bool:
+    """
+    Return True if 7D and 30D hold times are identical.
+    
+    Human traders typically show variance in hold times across different
+    timeframes. Identical values suggest automated/bot behavior.
+    """
+    if not wallet.avg_holding_time_7d or not wallet.avg_holding_time_30d:
+        return False
+    
+    hold_7d = _parse_hold_time(wallet.avg_holding_time_7d)
+    hold_30d = _parse_hold_time(wallet.avg_holding_time_30d)
+    
+    if hold_7d is None or hold_30d is None:
+        return False
+    
+    # Check if times are exactly equal (within 1 minute tolerance)
+    return abs(hold_7d - hold_30d) < 1.0
+
+
+def _get_pnl_concentration(wallet: SmartWallet) -> float:
+    """
+    Calculate the concentration of PnL from the top-performing token.
+    
+    Returns:
+        Float between 0-1 representing what % of total PnL comes from 
+        the single best token. Higher = more concentrated (riskier).
+    """
+    if not wallet.tokens_list:
+        return 0.0
+    
+    pnls = []
+    for t in wallet.tokens_list:
+        if isinstance(t, dict) and 'pnl_usd' in t:
+            pnls.append(abs(t['pnl_usd']))
+    
+    if not pnls or sum(pnls) == 0:
+        return 0.0
+    
+    max_pnl = max(pnls)
+    total_pnl = sum(pnls)
+    return max_pnl / total_pnl
+
+
+def _calculate_pnl_quality_score(wallet: SmartWallet, scoring: dict) -> float:
+    """
+    Calculate PnL quality based on average PnL per token.
+    
+    This metric rewards consistency - wallets that make steady profits
+    across multiple tokens rather than one lucky hit.
+    
+    Returns:
+        Float between 0-1
+    """
+    if wallet.appearances == 0:
+        return 0.0
+    
+    pnl_per_token = wallet.total_pnl / wallet.appearances
+    max_pnl_per_token = scoring.get("max_pnl_per_token_for_perfect_score", 5000)
+    
+    # Only reward positive PnL
+    if pnl_per_token <= 0:
+        return 0.0
+    
+    return min(pnl_per_token / max_pnl_per_token, 1.0)
+
+
 def calculate_degen_score(
     wallet: SmartWallet,
     config: Optional[dict] = None
 ) -> float:
     """
-    Calculate overall score with heavier weighting on win rate and hold time.
+    Calculate overall "Degen Score" with weighted components.
+    
+    Components:
+        - Win Rate (30%): Birdeye 7D win rate
+        - Hold Time (25%): Penalizes short holds, rewards diamond hands
+        - Consistency (20%): Appearances in multiple tokens
+        - Profitability (10%): Total PnL
+        - Position Size (10%): Average buy amount
+        - PnL Quality (5%): PnL per token (consistency metric)
+        
+    Penalties:
+        - PnL Concentration: -20% if >80% of PnL from single token
     """
     if config is None:
         config = load_config()
         
     scoring = config["scoring"]
+    filters = config.get("filters", {})
     
+    # Weights
     w_consistency = scoring["consistency_weight"]
     w_profitability = scoring["profitability_weight"]
     w_win_rate = scoring["win_rate_weight"]
     w_hold_time = scoring["hold_time_weight"]
     w_position = scoring["position_size_weight"]
+    w_pnl_quality = scoring.get("pnl_quality_weight", 0.05)
     
+    # Normalization caps
     max_appearances = scoring["max_appearances_for_perfect_score"]
     max_pnl = scoring["max_pnl_for_perfect_score"]
     max_position = scoring["max_position_for_perfect_score"]
     
+    # Penalties
+    pnl_concentration_penalty = scoring.get("pnl_concentration_penalty", 0.20)
+    
+    # Calculate component scores
     win_rate = wallet.win_rate_7d if wallet.win_rate_7d is not None else wallet.win_rate
     hold_score = _score_hold_time(wallet, scoring)
+    pnl_quality_score = _calculate_pnl_quality_score(wallet, scoring)
     
     appearances_score = min(wallet.appearances / max_appearances, 1.0)
     total_pnl = max(wallet.total_pnl, 0)
     profitability_score = min(total_pnl / max_pnl, 1.0)
     position_score = min(wallet.avg_position_size / max_position, 1.0)
     
+    # Base score calculation
     score = (
         win_rate * w_win_rate +
         hold_score * w_hold_time +
         appearances_score * w_consistency +
         profitability_score * w_profitability +
-        position_score * w_position
+        position_score * w_position +
+        pnl_quality_score * w_pnl_quality
     )
+    
+    # Apply PnL concentration penalty
+    concentration = _get_pnl_concentration(wallet)
+    if concentration > 0.80:
+        # Additional penalty if low win rate + high concentration
+        min_win_rate = filters.get("min_win_rate_7d", 0.50)
+        if win_rate < min_win_rate:
+            # Double penalty for low win rate + concentrated PnL
+            score *= (1 - pnl_concentration_penalty * 1.5)
+        else:
+            score *= (1 - pnl_concentration_penalty)
     
     return round(score * 100, 2)
 
@@ -414,30 +514,71 @@ def rescore_wallets(
     config: Optional[dict] = None
 ) -> List[SmartWallet]:
     """
-    Re-score and specific re-rank wallets after Birdeye enrichment.
+    Re-score and re-rank wallets after Birdeye enrichment.
+    
+    Applies bot detection filters:
+        - Hold time below minimum (90 min default)
+        - Identical 7D/30D hold times (bot pattern)
+        - Win rate below minimum (50% default)
+        
+    Then recalculates Degen Score with new metrics.
     """
     logger.info("Rescoring wallets with Degen Score logic...")
     processed = []
+    filtered_counts = {
+        "hold_time_bot": 0,
+        "identical_hold_time": 0,
+        "low_win_rate": 0,
+        "zero_score": 0
+    }
     
     if config is None:
         config = load_config()
     
     scoring = config.get("scoring", {})
+    filters = config.get("filters", {})
+    min_win_rate = filters.get("min_win_rate_7d", 0.50)
     
     for w in wallets:
+        # Bot Detection Filter 1: Hold time below minimum
         if _is_hold_time_bot(w, scoring):
-            logger.debug(f"Filtered {w.get_short_address()} after rescore (HoldTime<Min)")
+            logger.debug(f"Filtered {w.get_short_address()} (HoldTime<Min)")
+            filtered_counts["hold_time_bot"] += 1
             continue
-        # Only rescore if we have enriched data or want to enforce new logic
-        # We replace the old score
+        
+        # Bot Detection Filter 2: Identical 7D/30D hold times
+        if _is_identical_hold_time_bot(w):
+            logger.debug(f"Filtered {w.get_short_address()} (Identical 7D/30D HoldTime)")
+            filtered_counts["identical_hold_time"] += 1
+            continue
+        
+        # Bot Detection Filter 3: Win rate below minimum
+        win_rate = w.win_rate_7d if w.win_rate_7d is not None else w.win_rate
+        if win_rate < min_win_rate:
+            logger.debug(f"Filtered {w.get_short_address()} (WinRate={win_rate:.1%} < {min_win_rate:.0%})")
+            filtered_counts["low_win_rate"] += 1
+            continue
+        
+        # Recalculate score with new metrics
         new_score = calculate_degen_score(w, config)
         w.score = new_score
         
-        # Determine strict filter (e.g. score must be > 0)
+        # Filter zero scores
         if new_score > 0:
             processed.append(w)
         else:
-             logger.debug(f"Filtered {w.get_short_address()} after rescore (Score=0)")
-             
+            logger.debug(f"Filtered {w.get_short_address()} (Score=0)")
+            filtered_counts["zero_score"] += 1
+    
+    # Log summary
+    total_filtered = sum(filtered_counts.values())
+    logger.info(f"Filtered {total_filtered} wallets: "
+                f"hold_time={filtered_counts['hold_time_bot']}, "
+                f"identical_hold={filtered_counts['identical_hold_time']}, "
+                f"low_win_rate={filtered_counts['low_win_rate']}, "
+                f"zero_score={filtered_counts['zero_score']}")
+    logger.info(f"Remaining: {len(processed)} wallets")
+    
     # Sort by new score
     return sorted(processed, key=lambda w: w.score, reverse=True)
+
